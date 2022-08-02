@@ -53,6 +53,9 @@ public:
     virtual bool onStop(uint8_t lun, uint8_t power_condition, bool start, bool load_eject)
         { return getDefaultCallbacks()->onStop(lun, power_condition, start, load_eject); }
 
+    virtual bool onStop(uint8_t lun, uint8_t power_condition, bool start, bool load_eject, bool stop_start_sdfat)
+        { return getDefaultCallbacks()->onStop(lun, power_condition, start, load_eject, stop_start_sdfat); }
+
     virtual int32_t onRead(uint8_t lun, uint32_t lba, uint32_t offset, void* buffer, uint32_t bufsize)
         { return getDefaultCallbacks()->onRead(lun, lba, offset, buffer, bufsize); }
 

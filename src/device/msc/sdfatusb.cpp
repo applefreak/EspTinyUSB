@@ -15,17 +15,21 @@ bool SDFat2USB::begin(char* str) {
   return MSCusb::begin(str);
 }
 
-bool SDFat2USB::initSD(SdCsPin_t ssPin, uint32_t maxSck) {
-  if( !sdFat.begin(ssPin, maxSck) ) {
+bool SDFat2USB::initSD(SdSpiConfig ssConfig) {
+  if( !sdFat.begin( ssConfig ) ) {
     log_e("Card Mount Failed. Check if card is inserted and proper SS pin configured");
     return false;
   }
-  sdSSPin      = ssPin;
-  sdSck        = maxSck;
+  sdSSPin      = ssConfig.csPin;
+  sdOptions    = ssConfig.options;
+  sdSck        = ssConfig.maxSck;
   sdBlockCount = sdFat.card()->sectorCount();
   sdBlockSize  = sdFat.bytesPerSector();
-  sdCardReady  = true;
   return true;
+}
+
+bool SDFat2USB::initSD(SdCsPin_t ssPin, uint32_t maxSck) {
+  return initSD( SdSpiConfig(ssPin, DEDICATED_SPI, maxSck) );
 }
 
 bool SDFat2USB::initSD(SdCsPin_t ssPin) {
@@ -42,7 +46,7 @@ void SDFat2USB::setCallbacks(MSCCallbacks* cb) {
   MSCusb::setCallbacks( cb );
 }
 
-void SDFat2USB::ready(bool ready) {
+void SDFat2USB::setReady(bool ready) {
   sdCardReady = ready;
 }
 
@@ -75,35 +79,41 @@ void SDFat2USB::onCapacity(uint8_t lun, uint32_t* block_count, uint16_t* block_s
   log_v("default onCapacity: disk block count: %d, block size: %d", *block_count, *block_size);
 }
 
-bool SDFat2USB::onStop(uint8_t lun, uint8_t power_condition, bool start, bool load_eject) {
+bool SDFat2USB::onStop(uint8_t lun, uint8_t power_condition, bool start, bool load_eject, bool stop_start_sdfat = true) {
   (void) lun;
   (void) power_condition;
   if ( load_eject ) {
     if (start) { // load disk storage
       log_d("default start/stop load");
-      return sdSSPin ? initSD(sdSSPin, sdSck) : false;
+      if( stop_start_sdfat )
+        return sdSSPin ? initSD( SdSpiConfig(sdSSPin, sdOptions, sdSck) ) : false;
 
     } else { // unload disk storage
       log_d("default start/stop unload");
-      sdFat.end();
-      ready(false);
+      if( stop_start_sdfat )
+        sdFat.end();
+      setReady(false);
     }
   }
   return true;
+}
+
+bool SDFat2USB::onStop(uint8_t lun, uint8_t power_condition, bool start, bool load_eject) {
+  return onStop(lun, power_condition, start, load_eject, true);
 }
 
 int32_t SDFat2USB::onRead(uint8_t lun, uint32_t lba, uint32_t offset, void* buffer, uint32_t bufsize) {
   log_v("default onRead");
   (void) lun;
   (void) offset;
-  return sdFat.card()->readSectors(lba, (uint8_t*) buffer, bufsize / sdBlockSize) ? bufsize : -1;
+  return isReady() ? ( sdFat.card()->readSectors(lba, (uint8_t*) buffer, bufsize / sdBlockSize) ? bufsize : -1 ) : 0;
 }
 
 int32_t SDFat2USB::onWrite(uint8_t lun, uint32_t lba, uint32_t offset, void* buffer, uint32_t bufsize) {
   log_v("default onWrite");
   (void) lun;
   (void) offset;
-  return sdFat.card()->writeSectors(lba, (uint8_t*) buffer, bufsize / sdBlockSize) ? bufsize : -1;
+  return isReady() ? ( sdFat.card()->writeSectors(lba, (uint8_t*) buffer, bufsize / sdBlockSize) ? bufsize : -1 ) : 0;
 }
 
 void SDFat2USB::onFlush(uint8_t lun) {
